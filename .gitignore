@@ -1,5 +1,12 @@
-.cache
-.direnv
-build
+**/*
 
-*.o
+!Makefile
+!README.md
+!LICENSE
+!flake.nix
+!flake.lock
+!gnu-efi/**/*
+!.envrc
+!.gitignore
+!.clangd
+!breakout.c

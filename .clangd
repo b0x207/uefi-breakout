@@ -1,0 +1,4 @@
+CompileFlags:
+  Remove:
+    # To avoid issues with GCC flags that clang doesn't know
+    - -maccumulate-outgoing-args

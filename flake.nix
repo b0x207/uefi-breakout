@@ -10,13 +10,16 @@
       default = pkgs.mkShell {
         packages = with pkgs; [
           gcc
-          cmake
+          gnumake
           qemu
           tree
           sdl3
+          OVMFFull
+          compiledb
         ];
 
         OVMF_ROOT = pkgs.OVMFFull.fd.outPath;
+        UEFI_SHELL = "${pkgs.edk2-uefi-shell}/shell.efi";
       };
     }) inputs.nixpkgs.legacyPackages;
 
