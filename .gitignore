@@ -5,8 +5,13 @@
 !LICENSE
 !flake.nix
 !flake.lock
+!gnu-efi/
 !gnu-efi/**/*
 !.envrc
 !.gitignore
+!.gitattributes
 !.clangd
-!breakout.c
+!.gdbinit
+
+# Finally, some source code
+!*.c

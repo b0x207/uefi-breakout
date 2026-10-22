@@ -4,12 +4,21 @@ EFI_PART_DIR ?= $(RUNNER_DIR)/efi-part
 # Allow overrides from environment variables or cli args with a preference for cli args
 OVMF_ROOT ?= /usr/share/OVMF
 
+QEMU_FLAGS ?=
+CFLAGS :=
+
+GDB ?= 0
+ifeq ($(GDB),1)
+	QEMU_FLAGS += -s -S
+	CFLAGS += -DDEBUG_ENABLED=1 -g -ggdb
+endif
+
 .PHONY: all
 all: breakout.efi compile_commands.json
 
 .PHONY: clean
 clean: clean-runner
-	rm -vf *.{o,so,efi}
+	rm -vf *.{o,so,efi,.debug}
 	$(MAKE) -C gnu-efi clean
 
 .PHONY: clean-runner
@@ -17,7 +26,7 @@ clean-runner:
 	rm -rvf $(RUNNER_DIR)
 
 .PHONY: run
-run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi
+run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi breakout.debug
 	@# Make a copy of OVMF_VARS to ensure that qemu can non-destructively write
 	mkdir -p $(RUNNER_DIR)/FV
 	cp -v $(OVMF_ROOT)/FV/OVMF_VARS.fd $(RUNNER_DIR)/FV/OVMF_VARS.fd
@@ -31,12 +40,15 @@ run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi
 	  -enable-kvm \
 	  -machine q35 \
 	  -serial stdio \
-	  -display none
+	  -display none $(QEMU_FLAGS)
 
 breakout.efi: breakout.so
 	objcopy -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela \
 		-j .rel.* -j .rela.* -j .reloc --output-target efi-app-x86_64 --subsystem=10 breakout.so \
 		breakout.efi
+
+breakout.debug: breakout.so
+	objcopy --only-keep-debug breakout.so breakout.debug
 
 breakout.so: breakout.o gnu-efi
 	ld -shared -Bsymbolic -Lgnu-efi/x86_64/lib -Lgnu-efi/x86_64/gnuefi \
@@ -46,7 +58,7 @@ breakout.so: breakout.o gnu-efi
 breakout.o: breakout.c
 	$(CC) -Ignu-efi/inc -fpic -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar \
 		-mno-red-zone -maccumulate-outgoing-args \
-		-c breakout.c -o breakout.o
+		-c breakout.c -o breakout.o $(CFLAGS)
 
 .PHONY: gnu-efi
 gnu-efi:

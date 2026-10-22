@@ -16,6 +16,7 @@
           sdl3
           OVMFFull
           compiledb
+          gdb
         ];
 
         OVMF_ROOT = pkgs.OVMFFull.fd.outPath;
