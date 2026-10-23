@@ -1,16 +1,18 @@
 #include <efi.h>
+#include <efierr.h>
 #include <efilib.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <string.h>
 #include <wchar.h>
+
+#include "common.h"
+#include "efiprot.h"
+#include "graphics.h"
 
 #define STATUS_N_SET 35
 #define STATUS_N_CLEAR 8
 
+void print_efi_info();
 void set_debug_marker(EFI_HANDLE image_handle);
-void hcf();
-void die(const wchar_t *msg, EFI_STATUS status);
 EFI_STATUS read_key(EFI_INPUT_KEY *key);
 
 EFI_STATUS EFIAPI efi_main(
@@ -19,36 +21,43 @@ EFI_STATUS EFIAPI efi_main(
 ) {
     InitializeLib(image_handle, system_table);
     set_debug_marker(image_handle);
+    print_efi_info();
 
     EFI_STATUS status;
 
     Print(L"Welcome to UEFI Breakout!\n");
-    Print(L"Press any key to begin.\n");
+    Print(L"Press any key to begin (or q to quit).\n");
 
     EFI_INPUT_KEY key;
     status = read_key(&key);
-    if (EFI_ERROR(status)) {
+    if (EFI_ERROR(status))
         die(L"Failed to read key!", status);
-    }
+    if (key.UnicodeChar == L'q')
+        return EFI_SUCCESS;
 
-    Print(L"Type a line and I'll echo it back\n");
-    wchar_t buf[256];
-    wchar_t end[2] = L"\n";
-    memset(buf, 0, sizeof(wchar_t) * 256);
-    int i = 0;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
+    status = acquire_gop(&gop);
+    if (EFI_ERROR(status))
+        die(L"Failed to setup GOP!", status);
 
-    do {
-        status = read_key(&key);
-        if (EFI_ERROR(status))
-            die(L"Failed to read key!", status);
+    set_graphics_context(gop);
 
-        buf[i++] = key.UnicodeChar;
-        Print(L"%c", key.UnicodeChar);
-    } while (key.UnicodeChar != CHAR_CARRIAGE_RETURN);
+    Print(
+        L"Graphics Initialized: %upx by %upx display\n",
+        graphics_width(),
+        graphics_height()
+    );
 
-    Print(L"\n> %s\n", buf);
+    // Draw a square
+    graphics_rect(0, 0, 500, 500, 0xFF008800);
+    graphics_rect(100, 100, 100, 20, 0x00FF8800);
+    graphics_rect(300, 100, 100, 20, 0x00FF8800);
+    graphics_rect(100, 300, 300, 20, 0x00FF8800);
 
-    hcf();
+    status = read_key(&key);
+    if (EFI_ERROR(status))
+        die(L"Failed to read key!", status);
+
     return EFI_SUCCESS;
 }
 
@@ -72,14 +81,27 @@ void set_debug_marker(EFI_HANDLE image_handle) {}
 #endif
 
 void hcf() {
-    Print(L"Entering halt & catch fire...\n");
+    if (!graphics_context_valid())
+        Print(L"Entering halt & catch fire...\n");
     while(1);
 }
 
 void die(const wchar_t *msg, EFI_STATUS status) {
     Print(L"%s ERR: %r\n", msg, status);
-
     hcf();
+}
+
+void die_statusless(const wchar_t *msg) {
+    Print(L"%s\n", msg);
+    hcf();
+}
+
+void print_efi_info() {
+    Print(
+        L"Running on UEFI from %s at revision 0x%x\n",
+        gST->FirmwareVendor,
+        gST->FirmwareRevision
+    );
 }
 
 /**

@@ -1,11 +1,19 @@
-RUNNER_DIR ?= build/qemu-runner
+BUILD_DIR ?= build
+RUNNER_DIR ?= $(BUILD_DIR)/qemu-runner
 EFI_PART_DIR ?= $(RUNNER_DIR)/efi-part
+
+SRCS := breakout.c graphics.c
+OBJS := $(addprefix $(BUILD_DIR)/,$(SRCS:%.c=%.o))
 
 # Allow overrides from environment variables or cli args with a preference for cli args
 OVMF_ROOT ?= /usr/share/OVMF
 
 QEMU_FLAGS ?=
-CFLAGS :=
+CFLAGS := -Ignu-efi/inc -fpic -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar \
+		  -mno-red-zone -maccumulate-outgoing-args -std=c11
+LDFLAGS :=  -Lgnu-efi/x86_64/lib -Lgnu-efi/x86_64/gnuefi -Tgnu-efi/gnuefi/elf_x86_64_efi.lds
+OBJ_SEGMENTS := -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela \
+				-j .rel.* -j .rela.* -j .reloc
 
 GDB ?= 0
 ifeq ($(GDB),1)
@@ -14,11 +22,12 @@ ifeq ($(GDB),1)
 endif
 
 .PHONY: all
-all: breakout.efi compile_commands.json
+all: $(BUILD_DIR)/breakout.efi $(BUILD_DIR)/compile_commands.json
 
 .PHONY: clean
 clean: clean-runner
-	rm -vf *.{o,so,efi,.debug}
+	rm -rfv $(BUILD_DIR)
+	rm -vf *.{o,so,efi,debug}
 	$(MAKE) -C gnu-efi clean
 
 .PHONY: clean-runner
@@ -26,7 +35,7 @@ clean-runner:
 	rm -rvf $(RUNNER_DIR)
 
 .PHONY: run
-run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi breakout.debug
+run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi $(BUILD_DIR)/breakout.debug
 	@# Make a copy of OVMF_VARS to ensure that qemu can non-destructively write
 	mkdir -p $(RUNNER_DIR)/FV
 	cp -v $(OVMF_ROOT)/FV/OVMF_VARS.fd $(RUNNER_DIR)/FV/OVMF_VARS.fd
@@ -39,38 +48,37 @@ run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi breakout.debug
 	  -m 2048 \
 	  -enable-kvm \
 	  -machine q35 \
-	  -serial stdio \
-	  -display none $(QEMU_FLAGS)
+	  -display gtk $(QEMU_FLAGS)
 
-breakout.efi: breakout.so
-	objcopy -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela \
-		-j .rel.* -j .rela.* -j .reloc --output-target efi-app-x86_64 --subsystem=10 breakout.so \
-		breakout.efi
+$(BUILD_DIR)/breakout.efi: $(BUILD_DIR)/breakout.so
+	mkdir -p $(BUILD_DIR)
+	objcopy $(OBJ_SEGMENTS) --output-target efi-app-x86_64 --subsystem=10 $< $@
 
-breakout.debug: breakout.so
-	objcopy --only-keep-debug breakout.so breakout.debug
+$(BUILD_DIR)/breakout.debug: $(BUILD_DIR)/breakout.so
+	mkdir -p $(BUILD_DIR)
+	objcopy --only-keep-debug $< $@
 
-breakout.so: breakout.o gnu-efi
-	ld -shared -Bsymbolic -Lgnu-efi/x86_64/lib -Lgnu-efi/x86_64/gnuefi \
-		-Tgnu-efi/gnuefi/elf_x86_64_efi.lds gnu-efi/x86_64/gnuefi/crt0-efi-x86_64.o breakout.o \
-		-o breakout.so -lgnuefi -lefi
+$(BUILD_DIR)/breakout.so: $(OBJS)
+	mkdir -p $(BUILD_DIR)
+	ld -shared -Bsymbolic $(LDFLAGS) gnu-efi/x86_64/gnuefi/crt0-efi-x86_64.o $^ -o $@ \
+		-lgnuefi -lefi
 
-breakout.o: breakout.c
-	$(CC) -Ignu-efi/inc -fpic -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar \
-		-mno-red-zone -maccumulate-outgoing-args \
-		-c breakout.c -o breakout.o $(CFLAGS)
+$(BUILD_DIR)/%.o: %.c gnu-efi
+	mkdir -p $(BUILD_DIR)
+	$(CC) -c $< -o $@ $(CFLAGS)
 
 .PHONY: gnu-efi
 gnu-efi:
 	$(MAKE) -C gnu-efi
 
 # Setup a basic EFI system partition with the UEFI application
-$(EFI_PART_DIR)/BREAKOUT/breakout.efi: clean-runner breakout.efi
+$(EFI_PART_DIR)/BREAKOUT/breakout.efi: clean-runner $(BUILD_DIR)/breakout.efi
 	mkdir -p $(EFI_PART_DIR)/EFI/BOOT
-	cp breakout.efi $(EFI_PART_DIR)/EFI/BOOT/BOOTX64.EFI
+	cp $(BUILD_DIR)/breakout.efi $(EFI_PART_DIR)/EFI/BOOT/BOOTX64.EFI
 
 	[ -n "$(UEFI_SHELL)" ] && cp $(UEFI_SHELL) $(EFI_PART_DIR)
 
-.PHONY: compile_commands.json
-compile_commands.json:
-	compiledb -n $(MAKE) breakout.efi -C .
+.PHONY: $(BUILD_DIR)/compile_commands.json
+$(BUILD_DIR)/compile_commands.json:
+	mkdir -p $(BUILD_DIR)
+	compiledb -d $(BUILD_DIR) -o $@ -n $(MAKE) $(BUILD_DIR)/breakout.efi -C .

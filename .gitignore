@@ -15,3 +15,4 @@
 
 # Finally, some source code
 !*.c
+!*.h
