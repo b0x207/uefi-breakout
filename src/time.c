@@ -1,4 +1,5 @@
 #include <efi.h>
+#include <efierr.h>
 #include <efilib.h>
 
 #include "common.h"
@@ -45,4 +46,20 @@ void sleep(uint64_t duration) {
         die(L"Failed to set main graphics timer duration!", status);
 
     WaitForSingleEvent(timer, 0);
+}
+
+double get_delta(EFI_TIME *since, bool overwrite) {
+    if (!since)
+        die(L"Cannot call get_delta with NULL for since!", EFI_INVALID_PARAMETER);
+
+    EFI_TIME now = get_time();
+    double hours = (now.Hour - since->Hour) * 60.0 * 60.0 * 1000.0;
+    double minutes = (now.Minute - since->Minute) * 60.0 * 1000.0;
+    double seconds = (now.Second - since->Second) * 1000.0;
+    double milliseconds = (now.Nanosecond - since->Nanosecond) * 1000.0;
+
+    if (overwrite)
+        *since = now;
+
+    return hours + minutes + seconds + milliseconds;
 }

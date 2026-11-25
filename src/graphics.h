@@ -9,9 +9,21 @@
 
 #define PIXEL_WIDTH 4
 
+typedef __attribute__((aligned(4))) struct {
+    uint8_t _reserved;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+} PixelBGR;
+
+/**
+ * A graphics context representation which stores access to the GOP and frame
+ * buffer along with a back framebuffer to enable double buffered output.
+ */
 typedef struct {
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
     EFI_PHYSICAL_ADDRESS fb;
+    PixelBGR* back_fb;
 } GraphicsContext;
 
 // Since x86 is little endian, the binary format is rRGB for BGR 8-bit
@@ -34,16 +46,37 @@ extern GraphicsContext GRAPHICS_CONTEXT;
  *
  * @returns either EFI_SUCCESS or a forwarded error
  */
-EFI_STATUS acquire_gop(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop);
+EFI_STATUS graphics_acquire(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop);
+
+/**
+ * Allocate memory for the backing framebuffer. This is a required step to get
+ * double buffering working.
+ *
+ * @retval EFI_SUCEESS Success
+ * @retval EFI_INVALID_PARAMETER `gop` was NULL
+ * @retval EFI_OUT_OUF_RESOURCES Failed to allocate due to a lock of free memory
+ */
+EFI_STATUS graphics_allocate_backing(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop);
 
 /**
  * Set the global graphics context singleton.
  *
  * This must be called before any functions prefixed with `graphics_`
  */
-void set_graphics_context(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop);
+void graphics_set_context(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop);
 
+/**
+ * Confirm that the global singleton is valid
+ */
 bool graphics_context_valid();
+
+/**
+ * Present the back framebuffer by blitting it onto the main GOP framebuffer.
+ *
+ * @retval EFI_SUCCESS Success
+ * @retval EFI_DEVICE_ERROR The graphics device had an error
+ */
+EFI_STATUS graphics_present();
 
 size_t graphics_width();
 size_t graphics_height();

@@ -27,11 +27,15 @@ EFI_STATUS EFIAPI efi_main(
 
     EFI_STATUS status;
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
-    status = acquire_gop(&gop);
+    status = graphics_acquire(&gop);
     if (EFI_ERROR(status))
         die(L"Failed to setup GOP!", status);
 
-    set_graphics_context(gop);
+    status = graphics_allocate_backing(gop);
+    if (EFI_ERROR(status))
+        die(L"Failed to allocate graphics backing!", status);
+
+    graphics_set_context(gop);
 
     Print(
         L"Graphics Initialized: %upx by %upx display\n",
@@ -49,9 +53,7 @@ EFI_STATUS EFIAPI efi_main(
     if (key.UnicodeChar == L'q')
         return EFI_SUCCESS;
 
-    print_time();
-    sleep(1000);
-    print_time();
+    main_loop();
 
     Print(L"Done!\n");
 
@@ -63,22 +65,36 @@ EFI_STATUS EFIAPI efi_main(
 }
 
 void main_loop() {
-    size_t x = 0;
-    size_t y = 0;
-    ssize_t vx = 1;
-    ssize_t vy = 1;
+    ssize_t x = 0;
+    ssize_t y = 0;
+    ssize_t vx = 5;
+    ssize_t vy = 5;
+    size_t size = 20;
+
+    size_t width = graphics_width();
+    size_t height = graphics_height();
+
+    EFI_TIME last_frame_time = get_time();
+    EFI_STATUS status;
 
     while (1) {
         graphics_clear(COLOR_BLACK);
-        graphics_rect(x, y, 20, 20, COLOR_WHITE);
+        graphics_rect(0, 0, width, height, COLOR_RED);
+        graphics_rect(x, y, size, size, COLOR_WHITE);
 
         x += vx;
         y += vy;
 
-        if (x > graphics_width() || x < 0)
+        if (x + size >= width || x <= 0)
             vx *= -1;
-        if (y > graphics_height() || y < 0)
+        if (y + size >= height || y <= 0)
             vy *= -1;
+
+        status = graphics_present();
+        if (EFI_ERROR(status))
+            die(L"Fatal error! Could not present frame!", status);
+
+        sleep(33);
     }
 }
 

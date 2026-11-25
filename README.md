@@ -11,3 +11,6 @@ Reboot your computer into a fun game of breakout launched directly from UEFI.
 - [ ] Test QEMU builds on FHS system.
 - [ ] The Game
 - [ ] Mouse support
+- [ ] Proper logging
+  - [ ] Log to serial
+- [ ] Consider swapping frame buffers to allow damage tracking (if performance requires it)

@@ -8,9 +8,9 @@
 #include "efiprot.h"
 #include "graphics.h"
 
-GraphicsContext GRAPHICS_CONTEXT = { .gop = NULL };
+GraphicsContext GRAPHICS_CONTEXT = { .gop = NULL, .back_fb = NULL };
 
-EFI_STATUS acquire_gop(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop) {
+EFI_STATUS graphics_acquire(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop) {
     EFI_STATUS status;
 
     status = uefi_call_wrapper(
@@ -23,7 +23,7 @@ EFI_STATUS acquire_gop(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop) {
     if (EFI_ERROR(status))
         return status;
 
-    // The only supported format is 24-bit BGR
+    // The only supported format is 32-bit BGR
     EFI_GRAPHICS_PIXEL_FORMAT format = (*gop)->Mode->Info->PixelFormat;
     if (format != PixelBlueGreenRedReserved8BitPerColor) {
         Print(
@@ -43,7 +43,26 @@ EFI_STATUS acquire_gop(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop) {
     return EFI_SUCCESS;
 }
 
-void set_graphics_context(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop) {
+EFI_STATUS graphics_allocate_backing(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop) {
+    if (!gop)
+        return EFI_INVALID_PARAMETER;
+
+    EFI_STATUS status = uefi_call_wrapper(
+        gBS->AllocatePool,
+        3,
+        EfiBootServicesData,
+        sizeof(PixelBGR)
+            * gop->Mode->Info->HorizontalResolution
+            * gop->Mode->Info->HorizontalResolution,
+        &GRAPHICS_CONTEXT.back_fb
+    );
+    if (EFI_ERROR(status))
+        return status;
+
+    return EFI_SUCCESS;
+}
+
+void graphics_set_context(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop) {
     GRAPHICS_CONTEXT.gop = gop;
     GRAPHICS_CONTEXT.fb = gop->Mode->FrameBufferBase;
 
@@ -54,7 +73,27 @@ void set_graphics_context(EFI_GRAPHICS_OUTPUT_PROTOCOL *gop) {
 }
 
 bool graphics_context_valid() {
-    return GRAPHICS_CONTEXT.gop != NULL;
+    return GRAPHICS_CONTEXT.gop != NULL && GRAPHICS_CONTEXT.back_fb != NULL;
+}
+
+EFI_STATUS graphics_present() {
+    if (!graphics_context_valid())
+        die_statusless(L"Invalid/missing graphics context");
+
+    EFI_STATUS status = uefi_call_wrapper(
+        GRAPHICS_CONTEXT.gop->Blt,
+        10,
+        GRAPHICS_CONTEXT.gop,
+        GRAPHICS_CONTEXT.back_fb,
+        EfiBltBufferToVideo,
+        0, 0, // The whole thing. If needed, implement damage tracking instead.
+        0, 0,
+        GRAPHICS_CONTEXT.gop->Mode->Info->HorizontalResolution,
+        GRAPHICS_CONTEXT.gop->Mode->Info->VerticalResolution,
+        0
+    );
+
+    return status;
 }
 
 size_t graphics_width() {
@@ -75,7 +114,7 @@ void graphics_set(size_t x, size_t y, uint32_t pixel) {
     if (!graphics_context_valid())
         die_statusless(L"Invalid/missing graphics context");
 
-    uint32_t *p = (uint32_t*) GRAPHICS_CONTEXT.fb
+    uint32_t *p = (uint32_t*) GRAPHICS_CONTEXT.back_fb
                    + y * GRAPHICS_CONTEXT.gop->Mode->Info->PixelsPerScanLine
                    + x;
     *p = pixel;
