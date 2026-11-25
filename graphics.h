@@ -14,6 +14,13 @@ typedef struct {
     EFI_PHYSICAL_ADDRESS fb;
 } GraphicsContext;
 
+// Since x86 is little endian, the binary format is rRGB for BGR 8-bit
+#define COLOR_BLACK 0x00000000
+#define COLOR_WHITE 0x00FFFFFF
+#define COLOR_RED 0x00FF0000
+#define COLOR_BLUE 0x000000FF
+#define COLOR_GREEN 0x0000FF00
+
 /**
  * A singleton to provide easy global access to the current graphics context
  *
@@ -46,6 +53,7 @@ size_t graphics_height();
  */
 void graphics_set(size_t x, size_t y, uint32_t pixel);
 
+void graphics_clear(uint32_t color);
 void graphics_rect(
     size_t x,
     size_t y,

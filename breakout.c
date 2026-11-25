@@ -2,10 +2,10 @@
 #include <efierr.h>
 #include <efilib.h>
 #include <stdbool.h>
+#include <sys/types.h>
 #include <wchar.h>
 
 #include "common.h"
-#include "efiprot.h"
 #include "graphics.h"
 
 #define STATUS_N_SET 35
@@ -14,27 +14,18 @@
 void print_efi_info();
 void set_debug_marker(EFI_HANDLE image_handle);
 EFI_STATUS read_key(EFI_INPUT_KEY *key);
+void main_loop();
+void EFIAPI timer_callback(EFI_EVENT event, void *context);
 
 EFI_STATUS EFIAPI efi_main(
     EFI_HANDLE image_handle,
     EFI_SYSTEM_TABLE *system_table
 ) {
     InitializeLib(image_handle, system_table);
-    set_debug_marker(image_handle);
     print_efi_info();
+    set_debug_marker(image_handle);
 
     EFI_STATUS status;
-
-    Print(L"Welcome to UEFI Breakout!\n");
-    Print(L"Press any key to begin (or q to quit).\n");
-
-    EFI_INPUT_KEY key;
-    status = read_key(&key);
-    if (EFI_ERROR(status))
-        die(L"Failed to read key!", status);
-    if (key.UnicodeChar == L'q')
-        return EFI_SUCCESS;
-
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
     status = acquire_gop(&gop);
     if (EFI_ERROR(status))
@@ -48,11 +39,21 @@ EFI_STATUS EFIAPI efi_main(
         graphics_height()
     );
 
-    // Draw a square
-    graphics_rect(0, 0, 500, 500, 0xFF008800);
-    graphics_rect(100, 100, 100, 20, 0x00FF8800);
-    graphics_rect(300, 100, 100, 20, 0x00FF8800);
-    graphics_rect(100, 300, 300, 20, 0x00FF8800);
+    Print(L"Welcome to UEFI Breakout!\n");
+    Print(L"Press any key to begin (or q to quit).\n");
+
+    EFI_INPUT_KEY key;
+    status = read_key(&key);
+    if (EFI_ERROR(status))
+        die(L"Failed to read key!", status);
+    if (key.UnicodeChar == L'q')
+        return EFI_SUCCESS;
+
+    print_time();
+    sleep(1000);
+    print_time();
+
+    Print(L"Done!\n");
 
     status = read_key(&key);
     if (EFI_ERROR(status))
@@ -61,19 +62,50 @@ EFI_STATUS EFIAPI efi_main(
     return EFI_SUCCESS;
 }
 
+void main_loop() {
+    size_t x = 0;
+    size_t y = 0;
+    ssize_t vx = 1;
+    ssize_t vy = 1;
+
+    while (1) {
+        graphics_clear(COLOR_BLACK);
+        graphics_rect(x, y, 20, 20, COLOR_WHITE);
+
+        x += vx;
+        y += vy;
+
+        if (x > graphics_width() || x < 0)
+            vx *= -1;
+        if (y > graphics_height() || y < 0)
+            vy *= -1;
+    }
+}
+
 #ifdef DEBUG_ENABLED
 void set_debug_marker(EFI_HANDLE image_handle) {
-    EFI_LOADED_IMAGE loaded_image;
-    EFI_STATUS status = gBS->HandleProtocol(
+    EFI_LOADED_IMAGE *loaded_image = NULL;
+    EFI_GUID guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+
+    EFI_STATUS status = uefi_call_wrapper(
+        gBS->HandleProtocol,
+        3,
         image_handle,
-        &LoadedImageProtocol,
+        &guid,
         (void**) &loaded_image
     );
 
+    if (EFI_ERROR(status))
+        die(L"Failed to acquire image handle for debugging", status);
+
+    Print(
+        L"[dbg] Setting image base at 0x10008 to %p\n",
+        loaded_image->ImageBase
+    );
     // Set a basic marker for debugging to pick up
-    volatile uint64_t *marker_ptr = (uint64_t *)0x10000;
-    volatile uint64_t *image_base_ptr = (uint64_t *)0x10008;
-    *image_base_ptr = (uint64_t)loaded_image.ImageBase;
+    volatile uint64_t *marker_ptr = (uint64_t*)0x10000;
+    volatile uint64_t *image_base_ptr = (uint64_t*)0x10008;
+    *image_base_ptr = (uint64_t)loaded_image->ImageBase;
     *marker_ptr = 0xDEADBEEF;
 }
 #else
@@ -88,11 +120,35 @@ void hcf() {
 
 void die(const wchar_t *msg, EFI_STATUS status) {
     Print(L"%s ERR: %r\n", msg, status);
+
+#ifdef QUICK_DIE
+    uefi_call_wrapper(
+        gRT->ResetSystem,
+        4,
+        EfiResetShutdown,
+        EFI_SUCCESS,
+        0,
+        NULL
+    );
+#endif
+
     hcf();
 }
 
 void die_statusless(const wchar_t *msg) {
     Print(L"%s\n", msg);
+
+#ifdef QUICK_DIE
+    uefi_call_wrapper(
+        gRT->ResetSystem,
+        4,
+        EfiResetShutdown,
+        EFI_SUCCESS,
+        0,
+        NULL
+    );
+#endif
+
     hcf();
 }
 

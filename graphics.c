@@ -33,6 +33,13 @@ EFI_STATUS acquire_gop(EFI_GRAPHICS_OUTPUT_PROTOCOL **gop) {
         return EFI_UNSUPPORTED;
     }
 
+    EFI_PIXEL_BITMASK bitmask = (*gop)->Mode->Info->PixelInformation;
+    Print(L"[dbg] Bitmask:\n");
+    Print(L"[dbg] B: 0x%x\n", bitmask.BlueMask);
+    Print(L"[dbg] G: 0x%x\n", bitmask.GreenMask);
+    Print(L"[dbg] R: 0x%x\n", bitmask.RedMask);
+    Print(L"[dbg] r: 0x%x\n", bitmask.ReservedMask);
+
     return EFI_SUCCESS;
 }
 
@@ -72,6 +79,14 @@ void graphics_set(size_t x, size_t y, uint32_t pixel) {
                    + y * GRAPHICS_CONTEXT.gop->Mode->Info->PixelsPerScanLine
                    + x;
     *p = pixel;
+}
+
+void graphics_clear(uint32_t color) {
+    for (size_t x = 0; x < graphics_width(); x++) {
+        for (size_t y = 0; y < graphics_height(); y++) {
+            graphics_set(x, y, color);
+        }
+    }
 }
 
 void graphics_rect(
