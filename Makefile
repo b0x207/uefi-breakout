@@ -2,7 +2,7 @@ BUILD_DIR ?= build
 RUNNER_DIR ?= $(BUILD_DIR)/qemu-runner
 EFI_PART_DIR ?= $(RUNNER_DIR)/efi-part
 
-SRCS := breakout.c graphics.c time.c
+SRCS := src/breakout.c src/graphics.c src/time.c
 OBJS := $(addprefix $(BUILD_DIR)/,$(SRCS:%.c=%.o))
 
 # Allow overrides from environment variables or cli args with a preference for cli args
@@ -76,7 +76,7 @@ $(BUILD_DIR)/breakout.so: $(OBJS)
 		-lgnuefi -lefi
 
 $(BUILD_DIR)/%.o: %.c gnu-efi
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(<:$(lastword $(subst /, ,$<))=)
 	$(CC) -c $< -o $@ $(CFLAGS)
 
 .PHONY: gnu-efi

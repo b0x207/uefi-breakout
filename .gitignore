@@ -14,5 +14,6 @@
 !.gdbinit
 
 # Finally, some source code
-!*.c
-!*.h
+!src/
+!src/*.c
+!src/*.h
