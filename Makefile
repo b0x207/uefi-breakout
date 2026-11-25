@@ -15,10 +15,19 @@ LDFLAGS :=  -Lgnu-efi/x86_64/lib -Lgnu-efi/x86_64/gnuefi -Tgnu-efi/gnuefi/elf_x8
 OBJ_SEGMENTS := -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela \
 				-j .rel.* -j .rela.* -j .reloc
 
+# Enable GDB support (will halt QEMU until GDB connects along with building debug symbols)
 GDB ?= 0
+
+# Enable a quick die method which will shutdown on die rather than entering a hcf loop.
+QUICK_DIE ?= 0
+
 ifeq ($(GDB),1)
 	QEMU_FLAGS += -s -S
 	CFLAGS += -DDEBUG_ENABLED=1 -g -ggdb
+endif
+
+ifeq ($(QUICK_DIE),1)
+	CFLAGS += -DQUICK_DIE=1
 endif
 
 .PHONY: all
@@ -39,15 +48,18 @@ run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi $(BUILD_DIR)/breakout.debug
 	@# Make a copy of OVMF_VARS to ensure that qemu can non-destructively write
 	mkdir -p $(RUNNER_DIR)/FV
 	cp -v $(OVMF_ROOT)/FV/OVMF_VARS.fd $(RUNNER_DIR)/FV/OVMF_VARS.fd
+	chmod ug+w $(RUNNER_DIR)/FV/OVMF_VARS.fd
 
 	@# Note: qemu documentation marks the `:rw` attribute on `-hdb` as experimental
-	sudo -ES qemu-system-x86_64 \
+	qemu-system-x86_64 \
 	  -drive if=pflash,format=raw,readonly=on,file=$(OVMF_ROOT)/FV/OVMF_CODE.fd \
 	  -drive if=pflash,format=raw,file=$(RUNNER_DIR)/FV/OVMF_VARS.fd \
 	  -hdb fat:rw:$(EFI_PART_DIR) \
 	  -m 2048 \
 	  -enable-kvm \
 	  -machine q35 \
+	  -no-reboot \
+	  -serial stdio \
 	  -display gtk $(QEMU_FLAGS)
 
 $(BUILD_DIR)/breakout.efi: $(BUILD_DIR)/breakout.so
