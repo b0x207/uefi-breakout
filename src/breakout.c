@@ -15,6 +15,7 @@
 void print_efi_info();
 void set_debug_marker(EFI_HANDLE image_handle);
 EFI_STATUS read_key(EFI_INPUT_KEY *key);
+EFI_STATUS check_key(EFI_INPUT_KEY *key, bool clear_on_exist);
 void main_loop();
 void EFIAPI timer_callback(EFI_EVENT event, void *context);
 
@@ -60,6 +61,9 @@ void main_loop() {
     size_t width = graphics_width();
     size_t height = graphics_height();
     size_t size = 20;
+    size_t paddle_width = 30;
+    size_t paddle_size = 100;
+    size_t paddle_offset = 50;
 
     EFI_TIME seed_time = get_time();
     srand(seed_time.Second + seed_time.Minute);
@@ -69,12 +73,63 @@ void main_loop() {
     double vx = (rand() > RAND_HALF ? -1 : 1) * 10;
     double vy = (rand() > RAND_HALF ? -1 : 1) * 10;
 
+    double paddle_left_y = (double) height / 2 - (double) paddle_size / 2;
+    double paddle_right_y = (double) height / 2 - (double) paddle_size / 2;
+    int paddle_left_move = 0;
+    int paddle_right_move = 0;
+    double PADDLE_SPEED = 10.0;
+
     EFI_STATUS status;
+    EFI_INPUT_KEY key;
 
     while (1) {
+        status = check_key(&key, true);
+        if (status != EFI_NOT_READY && EFI_ERROR(status))
+            die(L"Failed to check key state!", status);
+
+        if (status != EFI_NOT_READY) {
+            switch (key.UnicodeChar) {
+                case L'q':
+                    paddle_left_move = -1;
+                    break;
+                case L'e':
+                    paddle_left_move = 1;
+                    break;
+                case L'w':
+                    paddle_left_move = 0;
+                    break;
+                case L'i':
+                    paddle_right_move = -1;
+                    break;
+                case L'p':
+                    paddle_right_move = 1;
+                    break;
+                case L'o':
+                    paddle_right_move = 0;
+                    break;
+            }
+        }
+
+        paddle_left_y += paddle_left_move * PADDLE_SPEED;
+        paddle_right_y += paddle_right_move * PADDLE_SPEED;
+
         graphics_clear(COLOR_BLACK);
         graphics_rect(0, 0, width, height, COLOR_RED);
         graphics_rect((size_t) x, (size_t) y, size, size, COLOR_WHITE);
+        graphics_rect(
+            paddle_offset,
+            (size_t) paddle_left_y,
+            paddle_width,
+            paddle_size,
+            COLOR_WHITE
+        );
+        graphics_rect(
+            width - paddle_offset - paddle_width,
+            (size_t) paddle_right_y,
+            paddle_width,
+            paddle_size,
+            COLOR_WHITE
+        );
 
         x += vx;
         y += vy;
@@ -191,6 +246,32 @@ EFI_STATUS read_key(EFI_INPUT_KEY *key) {
         return status;
 
     status = uefi_call_wrapper(gST->ConIn->ReadKeyStroke, 2, gST->ConIn, key);
+
+    return status;
+}
+
+/**
+ * Check if any particular key is being pressed.
+ *
+ * If there is data, `key` will be set to it. If `clear_on_exist` is also true,
+ * then the input device will be reset.
+ *
+ * @retval EFI_SUCCESS Success
+ * @retval EFI_NOT_READY No key has been pressed yet
+ * @retval * A forwarded error
+ */
+EFI_STATUS check_key(EFI_INPUT_KEY *key, bool clear_on_exist) {
+    EFI_STATUS status = EFI_SUCCESS;
+
+    status = uefi_call_wrapper(gBS->CheckEvent, 1, gST->ConIn->WaitForKey);
+    if (status != EFI_SUCCESS)
+        return status;
+
+    status = uefi_call_wrapper(gST->ConIn->ReadKeyStroke, 2, gST->ConIn, key);
+    if (status != EFI_SUCCESS)
+        return status;
+
+    status = uefi_call_wrapper(gST->ConIn->Reset, 2, gST->ConIn, false);
 
     return status;
 }
