@@ -7,6 +7,7 @@
 
 #include "common.h"
 #include "graphics.h"
+#include "rand.h"
 
 #define STATUS_N_SET 35
 #define STATUS_N_CLEAR 8
@@ -43,20 +44,11 @@ EFI_STATUS EFIAPI efi_main(
         graphics_height()
     );
 
-    Print(L"Welcome to UEFI Breakout!\n");
-    Print(L"Press any key to begin (or q to quit).\n");
-
-    EFI_INPUT_KEY key;
-    status = read_key(&key);
-    if (EFI_ERROR(status))
-        die(L"Failed to read key!", status);
-    if (key.UnicodeChar == L'q')
-        return EFI_SUCCESS;
-
     main_loop();
 
     Print(L"Done!\n");
 
+    EFI_INPUT_KEY key;
     status = read_key(&key);
     if (EFI_ERROR(status))
         die(L"Failed to read key!", status);
@@ -65,36 +57,43 @@ EFI_STATUS EFIAPI efi_main(
 }
 
 void main_loop() {
-    ssize_t x = 0;
-    ssize_t y = 0;
-    ssize_t vx = 5;
-    ssize_t vy = 5;
-    size_t size = 20;
-
     size_t width = graphics_width();
     size_t height = graphics_height();
+    size_t size = 20;
 
-    EFI_TIME last_frame_time = get_time();
+    EFI_TIME seed_time = get_time();
+    srand(seed_time.Second + seed_time.Minute);
+
+    double x = (double) width / 2 - (double) size / 2;
+    double y = (double) height / 2 - (double) size / 2;
+    double vx = (rand() > RAND_HALF ? -1 : 1) * 10;
+    double vy = (rand() > RAND_HALF ? -1 : 1) * 10;
+
     EFI_STATUS status;
 
     while (1) {
         graphics_clear(COLOR_BLACK);
         graphics_rect(0, 0, width, height, COLOR_RED);
-        graphics_rect(x, y, size, size, COLOR_WHITE);
+        graphics_rect((size_t) x, (size_t) y, size, size, COLOR_WHITE);
 
         x += vx;
         y += vy;
 
-        if (x + size >= width || x <= 0)
+        if (x + size >= width || x <= 0) {
+            x = x <= 0 ? 0 : width - size;
             vx *= -1;
-        if (y + size >= height || y <= 0)
+        }
+
+        if (y + size >= height || y <= 0) {
+            y = y <= 0 ? 0 : height - size;
             vy *= -1;
+        }
 
         status = graphics_present();
         if (EFI_ERROR(status))
             die(L"Fatal error! Could not present frame!", status);
 
-        sleep(33);
+        sleep(16);
     }
 }
 
