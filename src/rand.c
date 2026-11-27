@@ -39,13 +39,13 @@ static uint64_t xoshiro256ss(Xoshiro256ssState* state) {
 	return result;
 }
 
-void srand(uint64_t seed) {
+void seed_rand(uint64_t seed) {
     STATE.s[0] = splitmix64(seed);
     STATE.s[1] = splitmix64(seed);
     STATE.s[2] = splitmix64(seed);
     STATE.s[3] = splitmix64(seed);
 }
 
-uint64_t rand() {
+uint64_t rand_next() {
     return xoshiro256ss(&STATE);
 }

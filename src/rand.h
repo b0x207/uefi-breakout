@@ -9,8 +9,8 @@
 /**
  * A simple integer random number generator based on the xoshiro256** algorithm
  */
-uint64_t rand();
+uint64_t rand_next();
 
-void srand(uint64_t seed);
+void seed_rand(uint64_t seed);
 
 #endif // RAND_H_

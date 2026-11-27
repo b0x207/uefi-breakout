@@ -6,6 +6,13 @@ Reboot your computer into a fun game of breakout launched directly from UEFI.
 
 > Developed against the UEFI 2.11 specification. It should work on most systems with an older version.
 
+> Only tested on an Intel CPU. YMMV
+
+## Resources Used
+
+- [The Intel Software Developer Manual](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
+- [The UEFI 2.11 Specification](https://uefi.org/specifications)
+
 ## To Do
 
 - [ ] Test QEMU builds on FHS system.

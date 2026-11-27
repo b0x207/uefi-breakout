@@ -8,9 +8,12 @@ OBJS := $(addprefix $(BUILD_DIR)/,$(SRCS:%.c=%.o))
 # Allow overrides from environment variables or cli args with a preference for cli args
 OVMF_ROOT ?= /usr/share/OVMF
 
+# Always build for a generic x86_64 platform with no ISA extensions
+TARGET_CFLAGS := -march=x86-64 -mtune=generic
+
 QEMU_FLAGS ?=
 CFLAGS := -Ignu-efi/inc -fpic -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar \
-		  -mno-red-zone -maccumulate-outgoing-args -std=c11
+		  -mno-red-zone -maccumulate-outgoing-args -std=c11 $(TARGET_CFLAGS)
 LDFLAGS :=  -Lgnu-efi/x86_64/lib -Lgnu-efi/x86_64/gnuefi -Tgnu-efi/gnuefi/elf_x86_64_efi.lds
 OBJ_SEGMENTS := -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela \
 				-j .rel.* -j .rela.* -j .reloc
@@ -57,7 +60,7 @@ run: $(EFI_PART_DIR)/BREAKOUT/breakout.efi $(BUILD_DIR)/breakout.debug
 	  -hdb fat:rw:$(EFI_PART_DIR) \
 	  -m 2048 \
 	  -enable-kvm \
-	  -machine q35 \
+	  -machine q35 -cpu qemu64 \
 	  -no-reboot \
 	  -serial stdio \
 	  -display gtk,zoom-to-fit=on $(QEMU_FLAGS)

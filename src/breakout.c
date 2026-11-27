@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <wchar.h>
+#include <xmmintrin.h>
 
 #include "common.h"
 #include "graphics.h"
@@ -19,13 +20,16 @@ EFI_STATUS check_key(EFI_INPUT_KEY *key, bool clear_on_exist);
 void main_loop();
 void EFIAPI timer_callback(EFI_EVENT event, void *context);
 
+static void init_sse();
+
 EFI_STATUS EFIAPI efi_main(
     EFI_HANDLE image_handle,
     EFI_SYSTEM_TABLE *system_table
 ) {
     InitializeLib(image_handle, system_table);
-    print_efi_info();
     set_debug_marker(image_handle);
+    print_efi_info();
+    init_sse();
 
     EFI_STATUS status;
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
@@ -66,18 +70,18 @@ void main_loop() {
     size_t paddle_offset = 50;
 
     EFI_TIME seed_time = get_time();
-    srand(seed_time.Second + seed_time.Minute);
+    seed_rand(seed_time.Second + seed_time.Minute);
 
-    double x = (double) width / 2 - (double) size / 2;
-    double y = (double) height / 2 - (double) size / 2;
-    double vx = (rand() > RAND_HALF ? -1 : 1) * 10;
-    double vy = (rand() > RAND_HALF ? -1 : 1) * 10;
+    float x = (float) width / 2 - (float) size / 2;
+    float y = (float) height / 2 - (float) size / 2;
+    float vx = (rand_next() > RAND_HALF ? -1 : 1) * 10;
+    float vy = (rand_next() > RAND_HALF ? -1 : 1) * 10;
 
-    double paddle_left_y = (double) height / 2 - (double) paddle_size / 2;
-    double paddle_right_y = (double) height / 2 - (double) paddle_size / 2;
+    float paddle_left_y = (float) height / 2 - (float) paddle_size / 2;
+    float paddle_right_y = (float) height / 2 - (float) paddle_size / 2;
     int paddle_left_move = 0;
     int paddle_right_move = 0;
-    double PADDLE_SPEED = 10.0;
+    float PADDLE_SPEED = 10.0;
 
     EFI_STATUS status;
     EFI_INPUT_KEY key;
@@ -110,11 +114,16 @@ void main_loop() {
             }
         }
 
-        paddle_left_y += paddle_left_move * PADDLE_SPEED;
-        paddle_right_y += paddle_right_move * PADDLE_SPEED;
+        paddle_left_y = clamp_f(
+            0, height - paddle_size,
+            paddle_left_y + paddle_left_move * PADDLE_SPEED
+        );
+        paddle_right_y = clamp_f(
+            0, height - paddle_size,
+            paddle_right_y + paddle_right_move * PADDLE_SPEED
+        );
 
         graphics_clear(COLOR_BLACK);
-        graphics_rect(0, 0, width, height, COLOR_RED);
         graphics_rect((size_t) x, (size_t) y, size, size, COLOR_WHITE);
         graphics_rect(
             paddle_offset,
@@ -150,6 +159,33 @@ void main_loop() {
 
         sleep(16);
     }
+}
+
+static void init_sse() {
+    // Ensure that the host actually supports SSE. This should be the case,
+    // however, if the CFLAGS have been modified, a build might not target a
+    // valid system.
+    volatile uint32_t edx;
+    __asm__ volatile(
+        "mov 0x1, %%eax  \n\t"
+        "cpuid           \n\t"
+        "mov %%edx, %0     \n\t"
+        : "=r" (edx) : : "eax", "ebx", "ecx", "edx"
+    );
+    if (edx & 1<<25)
+        die_statusless(L"This CPU does not support SSE!");
+
+    // Read Vol 3A Ch. 2 pg. 15 for more info on the control register layouts
+    volatile uint64_t cr0;
+    __asm__ volatile("mov %%cr0, %0" : "=r" (cr0));
+    cr0 &= 0xFFFFFFFFFFFFFFFB; // Disable emulation of x87 instructions
+    cr0 |= 0x2;                // Enable coprocessor monitoring
+    __asm__ volatile("mov %0, %%cr0" : : "r" (cr0));
+
+    // Really make sure or crash now
+    __m128 a = _mm_set_ps(1.0f, 2.0f, 3.0f, 4.0f);
+    __m128 b = _mm_set_ps(1.0f, 2.0f, 3.0f, 4.0f);
+    __m128 c = _mm_add_ps(a, b);
 }
 
 #ifdef DEBUG_ENABLED
@@ -274,4 +310,12 @@ EFI_STATUS check_key(EFI_INPUT_KEY *key, bool clear_on_exist) {
     status = uefi_call_wrapper(gST->ConIn->Reset, 2, gST->ConIn, false);
 
     return status;
+}
+
+float clamp_f(float min, float max, float value) {
+    if (value < min)
+        value = min;
+    else if (value > max)
+        value = max;
+    return value;
 }
